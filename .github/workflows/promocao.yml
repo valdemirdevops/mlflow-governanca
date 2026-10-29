@@ -1,0 +1,114 @@
+# Promove o @challenger aprovado no gate para @champion. É a "implantação" da RFC.
+#
+# Pré-condições, todas verificadas aqui:
+#   1. a RFC é uma issue aberta com o rótulo rfc:aprovada (o CAB aprovou);
+#   2. o environment producao-modelos foi aprovado por um revisor obrigatório;
+#   3. promover.py: gate aprovado contra o champion atual, aprovador diferente de quem
+#      disparou o treino e execução dentro da janela de governanca.yml (ou emergencial).
+# Ao final, a evidência é anexada como comentário na RFC e como artefato do workflow.
+name: Promoção para produção
+run-name: "Promoção — RFC #${{ inputs.rfc_issue }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      rfc_issue:
+        description: Número da issue da RFC (ex. 12)
+        required: true
+        type: number
+      emergencial:
+        description: Justificativa (preencha só para promover fora da janela)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: read     # ler quem aprovou o environment
+  issues: write     # comentar e rotular a RFC
+
+concurrency:
+  group: producao-unicorn-ridge
+  cancel-in-progress: false
+
+jobs:
+  verificar-rfc:
+    runs-on: ubuntu-latest
+    outputs:
+      rfc: ${{ steps.rfc.outputs.rfc }}
+    steps:
+      - name: RFC aberta e aprovada pelo CAB
+        id: rfc
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ inputs.rfc_issue }}
+        run: |
+          dados=$(gh issue view "$N" -R "$GITHUB_REPOSITORY" --json state,labels,title,url)
+          echo "$dados" | jq .
+          echo "$dados" | jq -e '.state == "OPEN"' > /dev/null \
+            || { echo "::error::A RFC #$N não está aberta."; exit 1; }
+          echo "$dados" | jq -e '[.labels[].name] | index("rfc:aprovada") != null' > /dev/null \
+            || { echo "::error::A RFC #$N não tem o rótulo rfc:aprovada."; exit 1; }
+          echo "rfc=GH-$N" >> "$GITHUB_OUTPUT"
+
+  promover:
+    needs: verificar-rfc
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    environment: producao-modelos   # revisores obrigatórios (aprovação humana)
+    env:
+      MLFLOW_TRACKING_URI: ${{ vars.MLFLOW_TRACKING_URI }}
+      MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+      MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Identificar quem aprovou o environment
+        id: aprovador
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          login=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/approvals" \
+            --jq '[.[] | select(.state == "approved")] | last | .user.login // empty')
+          if [ -z "$login" ]; then
+            echo "::error::Nenhuma aprovação registrada no environment producao-modelos."
+            exit 1
+          fi
+          echo "Aprovado por: $login"
+          echo "login=$login" >> "$GITHUB_OUTPUT"
+
+      - name: Mover @champion
+        env:
+          RFC: ${{ needs.verificar-rfc.outputs.rfc }}
+          APROVADOR: ${{ steps.aprovador.outputs.login }}
+          EMERGENCIAL: ${{ inputs.emergencial }}
+        run: |
+          python src/promover.py promover --rfc "$RFC" --aprovador "$APROVADOR" \
+            --executor "$MLFLOW_TRACKING_USERNAME" --emergencial "$EMERGENCIAL"
+
+      - name: Gerar evidência
+        run: |
+          python src/auditar.py --formato markdown --saida evidencia.md
+          python src/auditar.py --formato json --saida evidencia.json
+          cat evidencia.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evidencia-${{ needs.verificar-rfc.outputs.rfc }}
+          path: evidencia.*
+          retention-days: 90
+
+      - name: Registrar na RFC
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ inputs.rfc_issue }}
+        run: |
+          gh issue comment "$N" -R "$GITHUB_REPOSITORY" --body-file evidencia.md
+          gh issue edit "$N" -R "$GITHUB_REPOSITORY" \
+            --add-label "rfc:implementada" --remove-label "rfc:aprovada"

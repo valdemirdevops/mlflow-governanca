@@ -1,0 +1,32 @@
+# Aplica config/acessos.yml no servidor MLflow a cada merge que mude a matriz de acesso.
+# Revisão de acesso = revisão de código: quem ganhou ou perdeu permissão aparece no PR.
+name: Aplicar matriz de acesso
+
+on:
+  push:
+    branches: [main]
+    paths: ["config/acessos.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aplicar:
+    if: vars.MLFLOW_TRACKING_URI != ''
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    environment: mlflow-admin   # segredos do administrador, com revisor obrigatório
+    env:
+      MLFLOW_TRACKING_URI: ${{ vars.MLFLOW_TRACKING_URI }}
+      MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_ADMIN_USERNAME }}
+      MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_ADMIN_PASSWORD }}
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Aplicar permissões (usuários já devem existir)
+        run: python src/permissoes.py | tee -a "$GITHUB_STEP_SUMMARY"

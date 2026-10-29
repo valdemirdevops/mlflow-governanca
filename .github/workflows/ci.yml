@@ -1,0 +1,42 @@
+# Roda em todo pull request: testa as regras de governança e o ciclo completo
+# (treino -> gate -> promoção -> rollback -> auditoria) contra um servidor MLflow
+# real com basic-auth, subido dentro do próprio job. Não precisa de infraestrutura.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Regras de governança (pytest)
+        run: pytest -q
+
+      - name: Ciclo completo contra MLflow com basic-auth
+        env:
+          EVIDENCIA_SAIDA: ${{ github.workspace }}/evidencia-ci
+        run: bash scripts/teste_acesso.sh
+
+      - name: Publicar evidência no resumo do job
+        run: cat evidencia-ci.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evidencia-ci
+          path: evidencia-ci.*

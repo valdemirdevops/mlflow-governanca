@@ -1,0 +1,7 @@
+# Troque OWNER pelo seu usuário (ou por um time: @org/time-risco).
+# Com a proteção da branch main exigindo revisão de code owners, mudar a política do gate,
+# a matriz de acesso ou os workflows de produção passa obrigatoriamente por essas pessoas.
+
+governanca.yml          @OWNER
+config/acessos.yml      @OWNER
+.github/workflows/      @OWNER

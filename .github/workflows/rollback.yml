@@ -1,0 +1,81 @@
+# Rollback do @champion. Sem janela e sem espera: reverter precisa ser possível a
+# qualquer hora. Ainda assim só roda da main, exige motivo e deixa evidência.
+name: Rollback de produção
+run-name: "Rollback — ${{ inputs.motivo }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      motivo:
+        description: Motivo do rollback (incidente, métrica, decisão do dono)
+        required: true
+      rfc_issue:
+        description: Issue da RFC ou do incidente (opcional, 0 = nenhuma)
+        required: false
+        type: number
+        default: 0
+      para:
+        description: Versão de destino (vazio = a versão que o champion substituiu)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: producao-unicorn-ridge
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    environment: producao-modelos-rollback   # sem revisor obrigatório: velocidade
+    env:
+      MLFLOW_TRACKING_URI: ${{ vars.MLFLOW_TRACKING_URI }}
+      MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+      MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Reverter @champion
+        env:
+          N: ${{ inputs.rfc_issue }}
+          PARA: ${{ inputs.para }}
+          MOTIVO: ${{ inputs.motivo }}
+        run: |
+          if [ "$N" != "0" ]; then RFC="GH-$N"; else RFC="EMERG-$GITHUB_RUN_ID"; fi
+          echo "Motivo: $MOTIVO (acionado por $GITHUB_ACTOR)"
+          extra=(); [ -n "$PARA" ] && extra=(--para "$PARA")
+          python src/promover.py rollback --rfc "$RFC" --executor "$MLFLOW_TRACKING_USERNAME" "${extra[@]}"
+
+      - name: Gerar evidência
+        run: |
+          python src/auditar.py --formato markdown --saida evidencia-rollback.md
+          cat evidencia-rollback.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evidencia-rollback-${{ github.run_id }}
+          path: evidencia-rollback.md
+          retention-days: 90
+
+      - name: Registrar na issue
+        if: inputs.rfc_issue != 0
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ inputs.rfc_issue }}
+          MOTIVO: ${{ inputs.motivo }}
+        run: |
+          { echo "**Rollback executado** por @$GITHUB_ACTOR — motivo: $MOTIVO"; echo; cat evidencia-rollback.md; } > comentario.md
+          gh issue comment "$N" -R "$GITHUB_REPOSITORY" --body-file comentario.md
+          gh issue edit "$N" -R "$GITHUB_REPOSITORY" --add-label "rfc:revertida"

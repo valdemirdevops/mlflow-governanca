@@ -1,0 +1,69 @@
+# Servidor MLflow do laboratório: basic-auth + PostgreSQL (metadados e permissões)
+# + MinIO (artefatos, compatível com S3).
+#
+#   docker compose up -d --build
+#   UI: http://localhost:5000   (admin / senha de config/basic_auth.ini)
+#   MinIO: http://localhost:9001 (minio / minio-lab-2026)
+#
+# Credenciais aqui são de LABORATÓRIO. Em produção: segredos no cofre, TLS na frente
+# e --allowed-hosts / --cors-allowed-origins configurados para o domínio real.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - pg-dados:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow"]
+      interval: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio-lab-2026
+    ports:
+      - "9001:9001"
+    volumes:
+      - minio-dados:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 20
+
+  minio-bucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "mc alias set lab http://minio:9000 minio minio-lab-2026 &&
+             mc mb --ignore-existing lab/mlflow-artefatos"
+
+  mlflow:
+    build: ./docker/mlflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-bucket:
+        condition: service_completed_successfully
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minio
+      AWS_SECRET_ACCESS_KEY: minio-lab-2026
+      MLFLOW_FLASK_SERVER_SECRET_KEY: troque-esta-chave-do-lab
+    volumes:
+      - ./config/basic_auth.ini:/etc/mlflow/basic_auth.ini:ro
+    ports:
+      - "5000:5000"
+
+volumes:
+  pg-dados:
+  minio-dados:

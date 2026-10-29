@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+mlruns/
+mlartifacts/
+mlflow.db
+run_id.txt
+evidencia*.md
+evidencia*.json
+!docs/evidencias/*

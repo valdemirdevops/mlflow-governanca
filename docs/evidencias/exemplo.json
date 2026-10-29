@@ -1,0 +1,87 @@
+{
+  "gerado_em": "2026-10-29T20:21:22+00:00",
+  "modelo": "unicorn-ridge",
+  "item_de_configuracao": {
+    "descricao": "Previsão de lucro de startups (dados sintéticos do laboratório). Consumidor: API de análise de crédito. Dono: time de Risco.",
+    "atributos": {
+      "dono": "time-risco",
+      "classificacao": "interno",
+      "dados_pessoais": "nao"
+    }
+  },
+  "alias": "champion",
+  "versao": "1",
+  "versao_criada_em": "2026-10-29T20:19:10+00:00",
+  "run_id": "d82e80ffdc094075b791a8a0a109354f",
+  "codigo": {
+    "commit": "0a1b2c3d",
+    "branch": "main",
+    "pipeline": "https://github.com/exemplo/mlflow-governanca/actions/runs/1",
+    "disparado_por": "ana-dados"
+  },
+  "datasets": [
+    {
+      "nome": "unicorn-2026-09",
+      "digest": "ee14de7a",
+      "origem": "https://github.com/exemplo/mlflow-governanca/blob/0a1b2c3d/dados/unicorn-2026-09.csv",
+      "contexto": "training"
+    }
+  ],
+  "parametros": {
+    "alpha": "0.5",
+    "train_size": "0.7",
+    "random_state": "0"
+  },
+  "metricas_treino": {
+    "r2_score": 0.8212744096832618
+  },
+  "gate": {
+    "r2": "0.9357",
+    "r2_champion": "nenhum",
+    "champion_versao": "nenhum",
+    "piso": "0.8",
+    "politica_sha": "757930f5c5f9",
+    "falhas": "nenhuma",
+    "em": "2026-10-29T20:19:31+00:00"
+  },
+  "mudanca": {
+    "validacao": "aprovado",
+    "rfc": "RFC-LAB-1",
+    "tipo_mudanca": "emergencial",
+    "aprovado_por": "maria-mudancas",
+    "promovido_por": "svc-mlflow-prod",
+    "promovido_em": "2026-10-29T20:19:42+00:00",
+    "substitui_versao": "nenhum",
+    "justificativa_emergencial": "carga inicial do laboratório"
+  },
+  "historico": [
+    {
+      "versao": "1",
+      "aliases": [
+        "champion"
+      ],
+      "validacao": "aprovado",
+      "gate_r2": "0.9357",
+      "rfc": "RFC-LAB-1",
+      "aprovado_por": "maria-mudancas",
+      "promovido_em": "2026-10-29T20:19:42+00:00",
+      "substituida_em": "2026-10-29T20:21:01+00:00",
+      "rollback_em": null,
+      "rollback_rfc": null,
+      "restaurada_em": "2026-10-29T20:21:08+00:00"
+    },
+    {
+      "versao": "2",
+      "aliases": [],
+      "validacao": "revertido",
+      "gate_r2": "0.9544",
+      "rfc": "RFC-LAB-2",
+      "aprovado_por": "maria-mudancas",
+      "promovido_em": "2026-10-29T20:20:53+00:00",
+      "substituida_em": null,
+      "rollback_em": "2026-10-29T20:21:08+00:00",
+      "rollback_rfc": "RFC-LAB-3",
+      "restaurada_em": null
+    }
+  ]
+}

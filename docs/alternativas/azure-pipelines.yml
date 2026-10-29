@@ -1,0 +1,78 @@
+# Equivalente Azure Pipelines do fluxo deste repositório.
+# Os scripts em src/ detectam o Azure sozinhos (TF_BUILD, BUILD_SOURCEVERSION...).
+#
+# Configuração:
+#   Library > variable group "mlflow-producao": MLFLOW_TRACKING_URI, MLFLOW_TRACKING_USERNAME,
+#     MLFLOW_TRACKING_PASSWORD (secretas)
+#   Environments > producao-modelos > Approvals and checks: Approvals, Business hours,
+#     Exclusive lock
+
+trigger:
+  branches:
+    include: [main]
+
+parameters:
+  - name: rfc
+    displayName: Número da RFC
+    type: string
+    default: ''
+
+variables:
+  - group: mlflow-producao
+
+stages:
+  - stage: Testes
+    jobs:
+      - job: testes
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - task: UsePythonVersion@0
+            inputs: { versionSpec: '3.12' }
+          - script: pip install -r requirements.txt && pytest -q && bash scripts/teste_acesso.sh
+
+  - stage: Treino_Gate
+    dependsOn: Testes
+    jobs:
+      - job: treino_gate
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - task: UsePythonVersion@0
+            inputs: { versionSpec: '3.12' }
+          - script: |
+              pip install -r requirements.txt
+              python src/train.py --dados dados/unicorn-2026-10.csv
+              python src/promover.py challenger --run-id "$(cat run_id.txt)"
+              python src/promover.py gate
+            env:
+              MLFLOW_TRACKING_URI: $(MLFLOW_TRACKING_URI)
+              MLFLOW_TRACKING_USERNAME: $(MLFLOW_TRACKING_USERNAME)
+              MLFLOW_TRACKING_PASSWORD: $(MLFLOW_TRACKING_PASSWORD)
+
+  - stage: Promocao
+    dependsOn: Treino_Gate
+    condition: and(succeeded(), ne('${{ parameters.rfc }}', ''))
+    jobs:
+      - deployment: promover
+        environment: producao-modelos
+        pool: { vmImage: ubuntu-latest }
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: UsePythonVersion@0
+                  inputs: { versionSpec: '3.12' }
+                # O Azure não expõe quem aprovou o environment como variável. Build.RequestedFor
+                # é quem disparou o pipeline; para registrar o aprovador real (e passar na
+                # checagem de segregação), consulte a REST API "Approvals - Query" neste passo.
+                - script: |
+                    pip install -r requirements.txt
+                    python src/promover.py promover --rfc "${{ parameters.rfc }}" \
+                      --aprovador "$(Build.RequestedFor)" --executor "$MLFLOW_TRACKING_USERNAME"
+                    python src/auditar.py --formato markdown --saida evidencia.md
+                  env:
+                    MLFLOW_TRACKING_URI: $(MLFLOW_TRACKING_URI)
+                    MLFLOW_TRACKING_USERNAME: $(MLFLOW_TRACKING_USERNAME)
+                    MLFLOW_TRACKING_PASSWORD: $(MLFLOW_TRACKING_PASSWORD)
+                - publish: evidencia.md
+                  artifact: evidencia-${{ parameters.rfc }}

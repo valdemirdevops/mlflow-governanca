@@ -1,0 +1,96 @@
+name: RFC — mudança de modelo em produção
+description: Solicitação de mudança para promover uma versão do modelo para @champion
+title: "RFC: promover unicorn-ridge v<versão>"
+labels: ["rfc", "rfc:em-avaliacao"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Preencha antes de executar o workflow **Promoção para produção**.
+        O workflow só roda se esta issue estiver aberta e com o rótulo `rfc:aprovada`,
+        que o CAB (ou o gestor de mudança) aplica depois de avaliar a solicitação.
+
+  - type: input
+    id: versao
+    attributes:
+      label: Versão candidata (@challenger)
+      description: Número da versão no Model Registry
+      placeholder: "2"
+    validations:
+      required: true
+
+  - type: input
+    id: execucao-gate
+    attributes:
+      label: Execução do gate
+      description: Link do workflow "Treino e gate" que aprovou a versão
+      placeholder: https://github.com/<owner>/<repo>/actions/runs/...
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivo
+    attributes:
+      label: O que muda e por quê
+      placeholder: Retreino com o snapshot de outubro; r2 no holdout sobe de 0.936 para 0.954.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tipo
+    attributes:
+      label: Tipo de mudança
+      options:
+        - Normal (passa pelo CAB)
+        - Padrão (pré-aprovada; critérios em docs/checklist-mudanca-padrao.md)
+        - Emergencial (justificar no workflow)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risco
+    attributes:
+      label: Risco
+      options: [Baixo, Médio, Alto]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: dados-pessoais
+    attributes:
+      label: O modelo trata dados pessoais (LGPD)?
+      options:
+        - Não
+        - Sim — RIPD informado na tag "ripd" do modelo
+    validations:
+      required: true
+
+  - type: input
+    id: janela
+    attributes:
+      label: Janela planejada
+      placeholder: "qui 29/10, 20:00–21:00 (America/Sao_Paulo)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Plano de rollback
+      value: |
+        Executar o workflow "Rollback de produção" informando esta issue.
+        O @champion volta para a versão registrada em `substitui_versao`.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: Gate aprovado (validacao=aprovado) contra o champion atual
+          required: true
+        - label: Linhagem completa (commit, pipeline e dataset no run)
+          required: true
+        - label: Consumidores sabem que o modelo carregado por @champion vai mudar
+          required: true

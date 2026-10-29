@@ -1,0 +1,77 @@
+# Equivalente GitLab CI do fluxo deste repositório (renomeie para .gitlab-ci.yml).
+# Os scripts em src/ detectam o GitLab sozinhos (CI_COMMIT_SHA, CI_PIPELINE_URL...).
+#
+# Configuração:
+#   Settings > CI/CD > Variables: MLFLOW_TRACKING_URI, MLFLOW_TRACKING_USERNAME,
+#     MLFLOW_TRACKING_PASSWORD (Masked + Protected)
+#   Settings > CI/CD > Protected environments: producao-modelos (quem pode executar;
+#     no Premium, aprovações obrigatórias)
+#   Settings > CI/CD > Deploy freezes: fora da janela, $CI_DEPLOY_FREEZE fica definido
+
+stages: [testes, treino, gate, promocao]
+
+default:
+  image: python:3.12-slim
+  before_script:
+    - pip install -q -r requirements.txt
+
+variables:
+  MLFLOW_DISABLE_AGENT_HINT: "1"
+
+testes:
+  stage: testes
+  script:
+    - apt-get update -qq && apt-get install -y -qq curl > /dev/null
+    - pytest -q
+    - bash scripts/teste_acesso.sh
+
+treino:
+  stage: treino
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - python src/train.py --dados dados/unicorn-2026-10.csv
+    - python src/promover.py challenger --run-id "$(cat run_id.txt)"
+
+gate:
+  stage: gate
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - python src/promover.py gate
+
+promover_producao:
+  stage: promocao
+  rules:
+    - if: $CI_DEPLOY_FREEZE
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  environment:
+    name: producao-modelos
+  resource_group: unicorn-ridge-producao
+  script:
+    - test -n "$RFC" || { echo "Informe a variável RFC ao executar o job"; exit 1; }
+    - >
+      python src/promover.py promover --rfc "$RFC" --aprovador "$GITLAB_USER_LOGIN"
+      --executor "$MLFLOW_TRACKING_USERNAME"
+    - python src/auditar.py --formato markdown --saida "evidencia-$RFC.md"
+  artifacts:
+    paths: ["evidencia-*.md"]
+    expire_in: 5 years
+
+rollback_producao:
+  stage: promocao
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  allow_failure: true
+  environment:
+    name: producao-modelos
+  resource_group: unicorn-ridge-producao
+  script:
+    - python src/promover.py rollback --rfc "${RFC:-EMERG-$CI_PIPELINE_ID}" --executor "$MLFLOW_TRACKING_USERNAME"
+    - python src/auditar.py --formato markdown --saida evidencia-rollback.md
+  artifacts:
+    paths: ["evidencia-rollback.md"]
+    expire_in: 5 years

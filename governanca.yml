@@ -1,0 +1,45 @@
+# Política de mudança do modelo, versionada junto com o código.
+# Alterar este arquivo exige merge request aprovado (veja .github/CODEOWNERS):
+# mudar o critério do gate é, por si só, uma mudança.
+
+modelo: unicorn-ridge
+experimento: unicorn-ridge
+
+# Registro do item de configuração (IC). O pipeline de treino sincroniza
+# estes atributos com o Model Registry: a "CMDB" do modelo vive no Git.
+descricao: >
+  Previsão de lucro de startups (dados sintéticos do laboratório).
+  Consumidor: API de análise de crédito. Dono: time de Risco.
+atributos_modelo:
+  dono: time-risco
+  classificacao: interno
+  dados_pessoais: nao
+
+gate:
+  holdout: dados/holdout.csv
+  alvo: Profit
+  metrica: r2_score
+  piso: 0.80          # o challenger precisa ter pelo menos este r2 no holdout
+  margem: 0.0         # e superar o champion atual por esta margem
+
+# Tags que o run de treino precisa ter (elos de linhagem)
+linhagem_obrigatoria:
+  - git_commit
+  - pipeline_url
+
+# Atributos do item de configuração (modelo registrado)
+tags_modelo_obrigatorias:
+  - dono
+  - classificacao
+  - dados_pessoais
+# Se dados_pessoais = "sim", a tag "ripd" também passa a ser obrigatória.
+
+# Segregação de funções: quem aprova a promoção não pode ser quem disparou o treino
+exigir_segregacao: true
+
+# Janela de mudança para promoção (o rollback não respeita janela, de propósito)
+janela:
+  fuso: America/Sao_Paulo
+  dias: [seg, ter, qua, qui, sex]
+  inicio: "19:00"
+  fim: "23:00"

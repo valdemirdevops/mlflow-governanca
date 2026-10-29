@@ -1,0 +1,36 @@
+# Matriz de acesso ao MLflow, versionada no Git.
+# Toda mudança de permissão passa por merge request (revisão de acesso = revisão de código).
+# Aplicar com:  python src/permissoes.py   (credenciais do admin no ambiente)
+#
+# Permissões: READ < USE < EDIT < MANAGE; DENY bloqueia explicitamente.
+# O default_permission do servidor é READ (config/basic_auth.ini): quem não está aqui só lê.
+
+contas_de_servico:
+  # Única conta que escreve no modelo de produção. Quem cria o recurso já recebe MANAGE;
+  # a concessão explícita deixa a regra visível e sobrevive a recriações.
+  - usuario: svc-mlflow-prod
+    experimentos:
+      unicorn-ridge: MANAGE
+    modelos:
+      unicorn-ridge: MANAGE
+
+pessoas:
+  - usuario: ana-dados          # cientista de dados
+    experimentos:
+      unicorn-ridge-dev: EDIT   # experimenta à vontade no ambiente de desenvolvimento
+    modelos:
+      unicorn-ridge: READ       # mas não move aliases de produção
+
+  - usuario: maria-mudancas     # gestora de mudança: aprova no GitHub, só lê o MLflow
+    modelos:
+      unicorn-ridge: READ
+
+papeis:
+  - nome: auditor-modelos
+    descricao: Leitura de todos os modelos registrados para auditoria
+    permissoes:
+      - tipo: registered_model
+        padrao: "*"
+        permissao: READ
+    membros:
+      - carlos-auditoria
